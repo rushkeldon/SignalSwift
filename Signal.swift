@@ -24,14 +24,14 @@ class Signal<T> {
         }
     }
 
-    // Adds a listener that will be called only once
+    // Adds a listener that will be called only once - logs errors when failing to remove a listener
     func addOnce(listener: @escaping Listener) {
         let onceListener: Listener = { [weak self, weak listener] value in
             guard let strongSelf = self, let strongListener = listener else { return }
             do {
                 try strongSelf.remove(listener: strongListener)
             } catch {
-                // Handle error if needed
+                print("Error removing listener: \(error)") // Logging the error
             }
             strongListener(value)
         }
@@ -40,7 +40,7 @@ class Signal<T> {
 
     // Removes a specific listener
     func remove(listener: @escaping Listener) throws {
-        queue.sync {
+        queue.async { // Changed from sync to async to avoid blocking the caller
             guard let index = self.listeners.firstIndex(where: { $0 as AnyObject === listener as AnyObject }) else {
                 throw SignalError.listenerNotFound
             }
@@ -58,8 +58,8 @@ class Signal<T> {
     // Dispatches the signal to all listeners if active
     func dispatch(value: T) {
         queue.async {
-            guard self.isActive else { return }
-            self.lastValue = value  // Memorize the last dispatched value
+            guard self.isActive else { return } // This check is safe with the sync in setActive
+            self.lastValue = value
             self.isMemorized = true
             for listener in self.listeners {
                 listener(value)
@@ -86,8 +86,9 @@ class Signal<T> {
     }
 
     // Enable or disable the signal
+    // Ensures that the activation state change is immediate and thread-safe, preventing race conditions.
     func setActive(_ active: Bool) {
-        queue.async {
+        queue.sync { // sync to ensure immediate update before any dispatch can occur
             self.isActive = active
         }
     }
